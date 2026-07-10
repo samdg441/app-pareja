@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native'; // <-- ¡Aquí agregamos Text!
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useFonts } from 'expo-font';
 
-import { ThemeProvider } from './src/theme/ThemeContext';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
 import HomeScreen from './src/screens/HomeScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
@@ -14,7 +14,6 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
-// Pixel‑art inspired tab icons (text/emoji)
 const TAB_ICONS = {
   Home: '🏠',
   Calendar: '📅',
@@ -23,33 +22,26 @@ const TAB_ICONS = {
   Profile: '👤',
 };
 
-// New theme matching Figma: soft light pink background + dark magenta primary
-const pixelTheme = {
-  background: '#FFF0F5',  // soft light pink
-  primary: '#C71585',     // sharp dark magenta
-  light: '#FFB6C1',       // light pink
-  medium: '#DB7093',      // pale violet red
-  dark: '#8B0A50',        // deep magenta
-};
-
 function MainTabs() {
+  const { theme } = useTheme();   // ✅ now inside the provider
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => (
           <Text style={{ fontSize: size, color }}>{TAB_ICONS[route.name]}</Text>
         ),
-        tabBarActiveTintColor: pixelTheme.primary,
-        tabBarInactiveTintColor: pixelTheme.light,
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textSecondary,
         tabBarStyle: {
-          backgroundColor: pixelTheme.medium,
-          borderTopColor: pixelTheme.primary,
+          backgroundColor: theme.cardBackground,
+          borderTopColor: theme.border,
           borderTopWidth: 2,
         },
         headerStyle: {
-          backgroundColor: pixelTheme.primary,
+          backgroundColor: theme.primary,
         },
-        headerTintColor: pixelTheme.background,
+        headerTintColor: theme.headerTint,
         headerTitleStyle: {
           fontFamily: 'PressStart2P-Regular',
           fontSize: 14,
@@ -73,13 +65,13 @@ export default function App() {
   if (!fontsLoaded) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={pixelTheme.primary} />
+        <ActivityIndicator size="large" color="#C71585" />
       </View>
     );
   }
 
   return (
-    <ThemeProvider initialTheme={pixelTheme}>
+    <ThemeProvider>
       <NavigationContainer>
         <MainTabs />
       </NavigationContainer>
