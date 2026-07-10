@@ -1,9 +1,10 @@
 import React from 'react';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native'; // <-- ¡Aquí agregamos Text!
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { useFonts } from 'expo-font';
 
-import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { ThemeProvider } from './src/theme/ThemeContext';
 
 import HomeScreen from './src/screens/HomeScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
@@ -13,7 +14,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
-// Simple pixel‑style emojis for tab icons
+// Pixel‑art inspired tab icons (text/emoji)
 const TAB_ICONS = {
   Home: '🏠',
   Calendar: '📅',
@@ -22,29 +23,36 @@ const TAB_ICONS = {
   Profile: '👤',
 };
 
-function MainTabs() {
-  const { theme } = useTheme();
+// New theme matching Figma: soft light pink background + dark magenta primary
+const pixelTheme = {
+  background: '#FFF0F5',  // soft light pink
+  primary: '#C71585',     // sharp dark magenta
+  light: '#FFB6C1',       // light pink
+  medium: '#DB7093',      // pale violet red
+  dark: '#8B0A50',        // deep magenta
+};
 
+function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => (
           <Text style={{ fontSize: size, color }}>{TAB_ICONS[route.name]}</Text>
         ),
-        tabBarActiveTintColor: theme.dark,
-        tabBarInactiveTintColor: theme.light,
+        tabBarActiveTintColor: pixelTheme.primary,
+        tabBarInactiveTintColor: pixelTheme.light,
         tabBarStyle: {
-          backgroundColor: theme.medium,
-          borderTopColor: theme.dark,
+          backgroundColor: pixelTheme.medium,
+          borderTopColor: pixelTheme.primary,
           borderTopWidth: 2,
         },
         headerStyle: {
-          backgroundColor: theme.medium,
+          backgroundColor: pixelTheme.primary,
         },
-        headerTintColor: theme.background,
+        headerTintColor: pixelTheme.background,
         headerTitleStyle: {
-          fontFamily: 'monospace',
-          fontWeight: 'bold',
+          fontFamily: 'PressStart2P-Regular',
+          fontSize: 14,
         },
       })}
     >
@@ -58,11 +66,32 @@ function MainTabs() {
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    'PressStart2P-Regular': require('./assets/fonts/PressStart2P-Regular.ttf'),
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={pixelTheme.primary} />
+      </View>
+    );
+  }
+
   return (
-    <ThemeProvider>
+    <ThemeProvider initialTheme={pixelTheme}>
       <NavigationContainer>
         <MainTabs />
       </NavigationContainer>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFF0F5',
+  },
+});
