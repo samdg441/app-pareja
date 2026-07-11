@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useFonts } from 'expo-font';
 
@@ -11,7 +12,9 @@ import CalendarScreen from './src/screens/CalendarScreen';
 import AddTaskScreen from './src/screens/AddTaskScreen';
 import PetScreen from './src/screens/PetScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import LoginScreen from './src/screens/LoginScreen';   // <-- new
 
+const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const TAB_ICONS = {
@@ -22,8 +25,9 @@ const TAB_ICONS = {
   Profile: '👤',
 };
 
+// ─── Bottom Tabs ───────────────────────────────────────────────────
 function MainTabs() {
-  const { theme } = useTheme();   // ✅ now inside the provider
+  const { theme } = useTheme();
 
   return (
     <Tab.Navigator
@@ -57,6 +61,17 @@ function MainTabs() {
   );
 }
 
+// ─── Root Stack ─────────────────────────────────────────────────────
+function RootNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Main" component={MainTabs} />
+    </Stack.Navigator>
+  );
+}
+
+// ─── App Entry Point ────────────────────────────────────────────────
 export default function App() {
   const [fontsLoaded] = useFonts({
     'PressStart2P-Regular': require('./assets/fonts/PressStart2P-Regular.ttf'),
@@ -73,7 +88,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <NavigationContainer>
-        <MainTabs />
+        <RootNavigator />
       </NavigationContainer>
     </ThemeProvider>
   );
