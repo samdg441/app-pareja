@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -12,29 +12,42 @@ import CalendarScreen from './src/screens/CalendarScreen';
 import AddTaskScreen from './src/screens/AddTaskScreen';
 import PetScreen from './src/screens/PetScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import LoginScreen from './src/screens/LoginScreen';   // <-- new
+import LoginScreen from './src/screens/LoginScreen';
+
+// ── Iconos personalizados ─────────────────────────────────────────
+const TAB_ICONS = {
+  Home: require('./assets/home.png'),
+  Calendar: require('./assets/calendar.png'),
+  AddTask: require('./assets/add.png'),
+  Pet: require('./assets/pet.png'),
+  Profile: require('./assets/profile.png'),
+};
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-const TAB_ICONS = {
-  Home: '🏠',
-  Calendar: '📅',
-  AddTask: '➕',
-  Pet: '🐾',
-  Profile: '👤',
-};
-
-// ─── Bottom Tabs ───────────────────────────────────────────────────
 function MainTabs() {
   const { theme } = useTheme();
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ color, size }) => (
-          <Text style={{ fontSize: size, color }}>{TAB_ICONS[route.name]}</Text>
-        ),
+        tabBarIcon: ({ focused }) => {
+          const icon = TAB_ICONS[route.name];
+          return (
+            <Image
+              source={icon}
+              style={{
+                width: 65,
+                height: 70,
+                opacity: focused ? 1 : 0.4,
+                resizeMode: 'contain',
+                marginTop: 30,
+              }}
+            />
+          );
+        },
+        tabBarShowLabel: false, // 👈 Oculta los títulos, solo se ven los íconos
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.textSecondary,
         tabBarStyle: {
@@ -61,7 +74,7 @@ function MainTabs() {
   );
 }
 
-// ─── Root Stack ─────────────────────────────────────────────────────
+// ─── Stack raíz ────────────────────────────────────────────────────
 function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -71,7 +84,7 @@ function RootNavigator() {
   );
 }
 
-// ─── App Entry Point ────────────────────────────────────────────────
+// ─── Punto de entrada de la app ───────────────────────────────────
 export default function App() {
   const [fontsLoaded] = useFonts({
     'PressStart2P-Regular': require('./assets/fonts/PressStart2P-Regular.ttf'),

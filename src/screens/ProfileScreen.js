@@ -1,16 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ScrollView,
   View,
   Text,
   TouchableOpacity,
+  Image,
+  Modal,
   StyleSheet,
+  SafeAreaView,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
+const gearIcon = require('../../assets/ggear.png');
+
 const ProfileScreen = () => {
   const { theme, activeThemeKey, setActiveThemeKey, themes } = useTheme();
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
 
+  // ── Theme card render (unchanged) ───────────────────────────────
   const renderThemeCard = (themeKey) => {
     const palette = themes[themeKey];
     const isSelected = themeKey === activeThemeKey;
@@ -41,81 +48,170 @@ const ProfileScreen = () => {
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.content}
-    >
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <View style={[styles.avatar, { borderColor: theme.primary }]}>
-          <Text style={styles.avatarEmoji}>👤</Text>
-        </View>
-        <View style={styles.headerText}>
-          <Text style={[styles.playerName, { color: theme.primary }]}>
-            PLAYER_ONE
-          </Text>
-          <Text style={[styles.level, { color: theme.textSecondary }]}>
-            LV. 42
-          </Text>
-        </View>
-      </View>
-
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View
-          style={[
-            styles.statCard,
-            { backgroundColor: theme.cardBackground, borderColor: theme.border },
-          ]}
+    <View style={{ flex: 1 }}>
+      {/* Gear icon – absolute positioned top right */}
+      <SafeAreaView style={styles.gearContainer}>
+        <TouchableOpacity
+          onPress={() => setIsSettingsVisible(true)}
+          activeOpacity={0.7}
         >
-          <Text style={[styles.statValue, { color: theme.primary }]}>127</Text>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
-            Touches
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.statCard,
-            { backgroundColor: theme.cardBackground, borderColor: theme.border },
-          ]}
-        >
-          <Text style={[styles.statValue, { color: theme.primary }]}>42</Text>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
-            Streak
-          </Text>
-        </View>
-      </View>
+          <Image
+            source={gearIcon}
+            style={styles.gearImage}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
+      </SafeAreaView>
 
-      {/* Partner */}
-      <View
-        style={[
-          styles.partnerBox,
-          { backgroundColor: theme.cardBackground, borderColor: theme.border },
-        ]}
+      {/* Main scroll content (unchanged) */}
+      <ScrollView
+        style={[styles.container, { backgroundColor: theme.background }]}
+        contentContainerStyle={styles.content}
       >
-        <Text style={[styles.partnerTitle, { color: theme.primary }]}>
-          LINKED WITH
-        </Text>
-        <Text style={[styles.partnerName, { color: theme.textPrimary }]}>
-          ♥ PARTNER_TWO ♥
-        </Text>
-      </View>
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <View style={[styles.avatar, { borderColor: theme.primary }]}>
+            <Text style={styles.avatarEmoji}>👤</Text>
+          </View>
+          <View style={styles.headerText}>
+            <Text style={[styles.playerName, { color: theme.primary }]}>
+              PLAYER_ONE
+            </Text>
+            <Text style={[styles.level, { color: theme.textSecondary }]}>
+              LV. 42
+            </Text>
+          </View>
+        </View>
 
-      {/* Theme selector header */}
-      <Text style={[styles.sectionTitle, { color: theme.primary }]}>
-        THEME COLORS
-      </Text>
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <View
+            style={[
+              styles.statCard,
+              { backgroundColor: theme.cardBackground, borderColor: theme.border },
+            ]}
+          >
+            <Text style={[styles.statValue, { color: theme.primary }]}>127</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+              Touches
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statCard,
+              { backgroundColor: theme.cardBackground, borderColor: theme.border },
+            ]}
+          >
+            <Text style={[styles.statValue, { color: theme.primary }]}>42</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+              Streak
+            </Text>
+          </View>
+        </View>
 
-      {/* 2‑column grid */}
-      <View style={styles.themeGrid}>
-        {Object.keys(themes).map(renderThemeCard)}
-      </View>
-    </ScrollView>
+        {/* Partner */}
+        <View
+          style={[
+            styles.partnerBox,
+            { backgroundColor: theme.cardBackground, borderColor: theme.border },
+          ]}
+        >
+          <Text style={[styles.partnerTitle, { color: theme.primary }]}>
+            LINKED WITH
+          </Text>
+          <Text style={[styles.partnerName, { color: theme.textPrimary }]}>
+            ♥ PARTNER_TWO ♥
+          </Text>
+        </View>
+
+        {/* Theme selector header */}
+        <Text style={[styles.sectionTitle, { color: theme.primary }]}>
+          THEME COLORS
+        </Text>
+
+        {/* 2‑column grid */}
+        <View style={styles.themeGrid}>
+          {Object.keys(themes).map(renderThemeCard)}
+        </View>
+      </ScrollView>
+
+      {/* ─── Settings Modal ──────────────────────────────────────────── */}
+      <Modal
+        visible={isSettingsVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsSettingsVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalBox,
+              {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: theme.primary }]}>
+              SETTINGS
+            </Text>
+
+            {/* Arcade buttons */}
+            <TouchableOpacity
+              style={[styles.arcadeButton, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                // handle EDIT PROFILE
+                setIsSettingsVisible(false);
+              }}
+            >
+              <Text style={[styles.arcadeButtonText, { color: theme.headerTint }]}>
+                EDIT PROFILE
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.arcadeButton, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                // handle CHANGE AVATAR
+                setIsSettingsVisible(false);
+              }}
+            >
+              <Text style={[styles.arcadeButtonText, { color: theme.headerTint }]}>
+                CHANGE AVATAR
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.arcadeButton, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                // handle LOGOUT
+                setIsSettingsVisible(false);
+              }}
+            >
+              <Text style={[styles.arcadeButtonText, { color: theme.headerTint }]}>
+                LOGOUT
+              </Text>
+            </TouchableOpacity>
+
+            {/* Simple CLOSE button */}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setIsSettingsVisible(false)}
+            >
+              <Text style={[styles.closeButtonText, { color: theme.textSecondary }]}>
+                CLOSE
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
 export default ProfileScreen;
 
+// ─── Styles ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -124,6 +220,18 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
+  // Gear icon
+  gearContainer: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 10, // above the scroll
+  },
+  gearImage: {
+    width: 68,
+    height: 68,
+  },
+  // Existing styles
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -203,7 +311,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   themeCard: {
-    width: '48%',               // 2 columns with a small gap
+    width: '48%',
     paddingVertical: 14,
     paddingHorizontal: 12,
     borderRadius: 10,
@@ -223,5 +331,44 @@ const styles = StyleSheet.create({
     fontFamily: 'PressStart2P-Regular',
     fontSize: 9,
     flexShrink: 1,
+  },
+  // Modal styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBox: {
+    width: '85%',
+    borderWidth: 4,
+    borderRadius: 8,
+    padding: 20,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 16,
+    marginBottom: 25,
+  },
+  arcadeButton: {
+    width: '100%',
+    paddingVertical: 14,
+    borderWidth: 3,
+    borderColor: '#000',
+    marginBottom: 15,
+    alignItems: 'center',
+  },
+  arcadeButtonText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 12,
+  },
+  closeButton: {
+    marginTop: 10,
+    padding: 10,
+  },
+  closeButtonText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 11,
   },
 });
