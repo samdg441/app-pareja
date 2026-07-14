@@ -1,15 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   Modal,
+  Dimensions,
   StyleSheet,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
-// ── Habit definitions (name + 5‑color scale) ──────────────────────
+// ── Dimensiones de pantalla para calcular el ancho de celda ──────
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const GRID_PADDING = 20; // padding horizontal total (10 a cada lado)
+const CELL_GAP = 4;
+// 7 columnas → calculamos ancho exacto
+const CELL_SIZE = (SCREEN_WIDTH - GRID_PADDING - (CELL_GAP * 6)) / 7;
+
+// ── Hábitos de ejemplo ─────────────────────────────────────────
 const HABITS = [
   {
     name: 'Water',
@@ -26,16 +34,13 @@ const HABITS = [
 ];
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
 const INTENSITY_LABELS = ['0', '1-3', '4-6', '7-9', '10+'];
 
-// ── Helper: get days in month ─────────────────────────────────────
+// ── Funciones de fecha ──────────────────────────────────────────
 const getDaysInMonth = (month, year) => new Date(year, month + 1, 0).getDate();
-
-// ── Helper: get weekday index for 1st of month (0 = Sunday) ─────
 const getFirstDayOfMonth = (month, year) => new Date(year, month, 1).getDay();
 
-// ── Dummy log generator ───────────────────────────────────────────
+// ── Generador de datos simulados ────────────────────────────────
 const generateDummyLog = (month, year) => {
   const now = new Date();
   const days = getDaysInMonth(month, year);
@@ -43,7 +48,7 @@ const generateDummyLog = (month, year) => {
   for (let d = 1; d <= days; d++) {
     const date = new Date(year, month, d);
     if (date > now) {
-      log[d] = null;   // future days are unlogged
+      log[d] = null;
     } else {
       log[d] = Math.floor(Math.random() * 5);
     }
@@ -53,15 +58,12 @@ const generateDummyLog = (month, year) => {
 
 const CalendarScreen = () => {
   const { theme } = useTheme();
-
-  // ── State ────────────────────────────────────────────────────────
   const now = new Date();
+
   const [currentHabitIndex, setCurrentHabitIndex] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [logData, setLogData] = useState({});
-
-  // ── Modal state ──────────────────────────────────────────────────
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState(1);
   const [selectedIntensity, setSelectedIntensity] = useState(0);
@@ -76,12 +78,11 @@ const CalendarScreen = () => {
     'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'
   ];
 
-  // ── Regenerate dummy logs when month/year/habit changes ────────
   useEffect(() => {
     setLogData(generateDummyLog(selectedMonth, selectedYear));
   }, [selectedMonth, selectedYear]);
 
-  // ── Habit navigation ────────────────────────────────────────────
+  // ── Navegación de hábitos ──────────────────────────────────────
   const goToPrevHabit = () => {
     if (currentHabitIndex > 0) setCurrentHabitIndex(prev => prev - 1);
   };
@@ -89,7 +90,7 @@ const CalendarScreen = () => {
     if (currentHabitIndex < HABITS.length - 1) setCurrentHabitIndex(prev => prev + 1);
   };
 
-  // ── Month navigation (only past months allowed) ─────────────────
+  // ── Navegación de meses (solo pasado) ──────────────────────────
   const goToPrevMonth = () => {
     if (selectedMonth === 0) {
       setSelectedMonth(11);
@@ -99,10 +100,8 @@ const CalendarScreen = () => {
     }
   };
   const goToNextMonth = () => {
-    // Prevent going into future
     if (selectedYear > now.getFullYear()) return;
     if (selectedYear === now.getFullYear() && selectedMonth >= now.getMonth()) return;
-
     if (selectedMonth === 11) {
       setSelectedMonth(0);
       setSelectedYear(prev => prev + 1);
@@ -111,7 +110,7 @@ const CalendarScreen = () => {
     }
   };
 
-  // ── Modal handlers ──────────────────────────────────────────────
+  // ── Modal ──────────────────────────────────────────────────────
   const openModal = () => {
     setSelectedDate(1);
     setSelectedIntensity(0);
@@ -122,13 +121,21 @@ const CalendarScreen = () => {
     setModalVisible(false);
   };
 
-  // ── Cell color ──────────────────────────────────────────────────
+  // ── Color de fondo y texto ────────────────────────────────────
   const getCellColor = (day) => {
     if (logData[day] === null || logData[day] === undefined) return theme.cardBackground;
     return habitColors[logData[day]];
   };
 
-  // ── Build grid array with leading blanks ────────────────────────
+  const getTextColor = (day) => {
+    const intensity = logData[day];
+    if (intensity === null || intensity === undefined) return theme.textSecondary;
+    // En las escalas, los índices 0-1 suelen ser claros → texto oscuro
+    // índices 2-4 son oscuros → texto blanco
+    return intensity >= 2 ? '#FFFFFF' : '#1F2937';
+  };
+
+  // ── Construir grilla con huecos ───────────────────────────────
   const gridCells = [];
   for (let i = 0; i < firstDayIndex; i++) {
     gridCells.push({ type: 'blank', key: `blank-${i}` });
@@ -139,9 +146,9 @@ const CalendarScreen = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* ── Navigation rows ────────────────────────────────────── */}
+      {/* ── Doble navegación ──────────────────────────────────── */}
       <View style={[styles.navContainer, { borderColor: theme.border }]}>
-        {/* Habit switcher */}
+        {/* Fila de hábito */}
         <View style={styles.navRow}>
           <TouchableOpacity onPress={goToPrevHabit} style={styles.arrowBtn}>
             <Text style={[styles.arrowText, { color: theme.primary }]}>◀</Text>
@@ -154,7 +161,7 @@ const CalendarScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Month / Year switcher */}
+        {/* Fila de mes / año */}
         <View style={styles.navRow}>
           <TouchableOpacity onPress={goToPrevMonth} style={styles.arrowBtn}>
             <Text style={[styles.arrowText, { color: theme.primary }]}>◀</Text>
@@ -188,7 +195,7 @@ const CalendarScreen = () => {
         </View>
       </View>
 
-      {/* ── Weekday headers ─────────────────────────────────────── */}
+      {/* ── Cabeceras de días ──────────────────────────────────── */}
       <View style={styles.weekdayRow}>
         {WEEKDAYS.map((day, idx) => (
           <View key={idx} style={styles.weekdayCell}>
@@ -199,28 +206,50 @@ const CalendarScreen = () => {
         ))}
       </View>
 
-      {/* ── Heatmap grid ────────────────────────────────────────── */}
+      {/* ── Grilla del calendario ──────────────────────────────── */}
       <ScrollView contentContainerStyle={styles.gridScroll}>
         <View style={styles.heatmapGrid}>
           {gridCells.map(cell => {
             if (cell.type === 'blank') {
-              return <View key={cell.key} style={styles.blankCell} />;
+              return (
+                <View
+                  key={cell.key}
+                  style={[
+                    styles.dayCell,
+                    styles.blankCell,
+                  ]}
+                />
+              );
             }
             const day = cell.day;
+            const bgColor = getCellColor(day);
+            const txtColor = getTextColor(day);
             return (
               <View
                 key={cell.key}
                 style={[
                   styles.dayCell,
-                  { backgroundColor: getCellColor(day), borderColor: theme.border },
+                  {
+                    backgroundColor: bgColor,
+                    borderColor: theme.primary,
+                  },
                 ]}
-              />
+              >
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    { color: txtColor },
+                  ]}
+                >
+                  {day}
+                </Text>
+              </View>
             );
           })}
         </View>
       </ScrollView>
 
-      {/* ── Register button ─────────────────────────────────────── */}
+      {/* ── Botón Registrar ────────────────────────────────────── */}
       <TouchableOpacity
         style={[styles.registerButton, { backgroundColor: theme.primary }]}
         onPress={openModal}
@@ -230,7 +259,7 @@ const CalendarScreen = () => {
         </Text>
       </TouchableOpacity>
 
-      {/* ── Log entry modal (unchanged structure, only colors adapt) */}
+      {/* ── Modal de registro ──────────────────────────────────── */}
       <Modal visible={modalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View
@@ -243,7 +272,7 @@ const CalendarScreen = () => {
               LOG ENTRY
             </Text>
 
-            {/* Date selection */}
+            {/* Selección de fecha */}
             <Text style={[styles.sectionLabel, { color: theme.textPrimary }]}>
               SELECT DATE
             </Text>
@@ -291,7 +320,7 @@ const CalendarScreen = () => {
               </View>
             </ScrollView>
 
-            {/* Intensity selection */}
+            {/* Intensidad */}
             <Text style={[styles.sectionLabel, { color: theme.textPrimary }]}>
               INTENSITY
             </Text>
@@ -340,7 +369,7 @@ const CalendarScreen = () => {
 
 export default CalendarScreen;
 
-// ─── Styles ──────────────────────────────────────────────────────────
+// ─── Estilos ───────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -374,12 +403,12 @@ const styles = StyleSheet.create({
   },
   weekdayRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
     marginBottom: 4,
-    paddingHorizontal: 4,
   },
   weekdayCell: {
-    flex: 1,
+    width: CELL_SIZE,
     alignItems: 'center',
     paddingVertical: 4,
   },
@@ -388,27 +417,29 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   gridScroll: {
-    paddingHorizontal: 4,
+    paddingHorizontal: 10,
     paddingBottom: 10,
   },
   heatmapGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-start',
-    gap: 2,
+  },
+  dayCell: {
+    width: CELL_SIZE,
+    height: CELL_SIZE,          // Cuadrado perfecto
+    borderWidth: 2,
+    margin: CELL_GAP / 2,      // Espacio uniforme
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   blankCell: {
-    width: '13.2%',      // approx 1/7 minus gap
-    aspectRatio: 1,
-    marginBottom: 2,
     backgroundColor: 'transparent',
     borderWidth: 0,
   },
-  dayCell: {
-    width: '13.2%',
-    aspectRatio: 1,
-    borderWidth: 2,
-    marginBottom: 2,
+  dayNumber: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 10,
   },
   registerButton: {
     marginHorizontal: 20,
@@ -422,7 +453,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PressStart2P-Regular',
     fontSize: 14,
   },
-  // Modal styles (same as before)
+  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
