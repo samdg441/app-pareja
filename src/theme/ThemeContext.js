@@ -10,13 +10,13 @@ const PALETTES = {
     border: '#C71585',
     headerTint: '#FFFFFF',
   },
-  'Ocean Blue': {
-    background: '#F0F8FF',
-    primary: '#1E3A8A',
-    textPrimary: '#1E3A8A',
-    textSecondary: '#6076B3',
-    cardBackground: '#DBEAFE',
-    border: '#1E3A8A',
+  'Midnight Blue': {         // antes Ocean Blue
+    background: '#E2EAFC',
+    primary: '#3F51B5',
+    textPrimary: '#1A237E',
+    textSecondary: '#8E9AAF',
+    cardBackground: '#D6E4FF',
+    border: '#3F51B5',
     headerTint: '#FFFFFF',
   },
   'Royal Purple': {
@@ -28,13 +28,13 @@ const PALETTES = {
     border: '#6B21A8',
     headerTint: '#FFFFFF',
   },
-  'Mint Green': {
-    background: '#F0FFF4',
-    primary: '#047857',
-    textPrimary: '#047857',
-    textSecondary: '#4CAF84',
-    cardBackground: '#D1FAE5',
-    border: '#047857',
+  'Jade Green': {            // antes Mint Green
+    background: '#E0F2F1',
+    primary: '#26A69A',
+    textPrimary: '#004D40',
+    textSecondary: '#80CBC4',
+    cardBackground: '#B2DFDB',
+    border: '#26A69A',
     headerTint: '#FFFFFF',
   },
   'Sunset Orange': {
@@ -46,15 +46,15 @@ const PALETTES = {
     border: '#C2410C',
     headerTint: '#FFFFFF',
   },
-  'Dark Dream': {
-    background: '#121212',
-    primary: '#5e5e5e',        // vibrant accent
-    textPrimary: '#FFFFFF',
-    textSecondary: '#B0B0B0',
-    cardBackground: '#1E1E1E',
-    border: '#b9b7bb',
-    headerTint: '#FFFFFF',
-  },
+'Dark Dream': {
+    background: '#0D0D0D',        // fondo principal casi negro
+    primary: '#A0A0A0',          // gris claro para botones y acentos
+    textPrimary: '#E0E0E0',      // texto principal blanco roto (no deslumbrante)
+    textSecondary: '#808080',    // texto secundario gris medio
+    cardBackground: '#1A1A1A',   // fondo de tarjetas, ligeramente más claro
+    border: '#505050',           // bordes gris oscuro
+    headerTint: '#E0E0E0',      // color del texto en la barra superior
+},
 };
 
 export const ThemeContext = createContext();
