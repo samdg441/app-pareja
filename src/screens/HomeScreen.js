@@ -6,9 +6,22 @@ import {
   TouchableOpacity,
   Animated,
   StyleSheet,
+  Vibration,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useTheme } from '../theme/ThemeContext';
+import { supabase } from '../lib/supabase';
 
+// Configurar notificaciones en primer plano
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
+// Corazones (0 a 4 toques)
 const heartImages = [
   require('../../assets/heart_0.png'),
   require('../../assets/heart_1.png'),
@@ -21,16 +34,121 @@ const HomeScreen = () => {
   const { theme } = useTheme();
   const [touchesToday, setTouchesToday] = useState(0);
 
-  // ── Continuous animations ────────────────────────────────────────
+  // ── Animaciones existentes ─────────────────────────────────────
   const heartBreath = useRef(new Animated.Value(1)).current;
   const buttonPulse = useRef(new Animated.Value(1)).current;
-
-  // ── One‑shot bounce values (start at 1, no effect) ──────────────
   const heartBounce = useRef(new Animated.Value(1)).current;
   const buttonBounce = useRef(new Animated.Value(1)).current;
 
+  // ── Toast retro ────────────────────────────────────────────────
+  const [toastMsg, setToastMsg] = useState(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimeout = useRef(null);
+
+  const showRetroToast = (message, icon = '💖') => {
+    // Limpiar timeout anterior
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    setToastMsg({ message, icon });
+    Animated.timing(toastOpacity, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+    toastTimeout.current = setTimeout(() => {
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => setToastMsg(null));
+    }, 3000);
+  };
+
+  // ── Supabase: canal y couple_id ───────────────────────────────
+  const channelRef = useRef(null);
+  const [coupleId, setCoupleId] = useState(null);
+
   useEffect(() => {
-    // Heart: gentle breath 0.97 ↔ 1.03
+    const getCoupleId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('couple_id')
+        .eq('id', user.id)
+        .single();
+      if (profile?.couple_id) setCoupleId(profile.couple_id);
+    };
+    getCoupleId();
+  }, []);
+
+  useEffect(() => {
+    if (!coupleId) return;
+
+    const channel = supabase.channel(`couple_touches:${coupleId}`, {
+      config: { broadcast: { self: true } },
+    });
+
+    channel.on('broadcast', { event: 'touch_received' }, async () => {
+      // Doble zumbido retro
+      Vibration.vibrate([0, 150, 100, 150]);
+      // Notificación del sistema
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '¡Zumbido de Amor! ⚡️',
+          body: 'Tu pareja te ha enviado un toque',
+        },
+        trigger: null,
+      });
+      // Toast en pantalla
+      showRetroToast('¡Tu pareja te envió un toque! ⚡️');
+    });
+
+    channel.subscribe();
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [coupleId]);
+
+  // ── Envío de toque ────────────────────────────────────────────
+  const sendTouch = async () => {
+    if (!coupleId || !channelRef.current) return;
+
+    // Doble zumbido local (el emisor también lo siente)
+    Vibration.vibrate([0, 150, 100, 150]);
+
+    // Enviar broadcast
+    await channelRef.current.send({
+      type: 'broadcast',
+      event: 'touch_received',
+      payload: {},
+    });
+
+    // Incrementar contador en BD
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('touches')
+          .eq('id', user.id)
+          .single();
+        const newTouches = (profile?.touches || 0) + 1;
+        await supabase
+          .from('profiles')
+          .update({ touches: newTouches })
+          .eq('id', user.id);
+      }
+    } catch (error) {
+      console.warn('No se pudo actualizar el contador de toques:', error);
+    }
+
+    showRetroToast('¡Toque enviado! 💖');
+  };
+
+  // ── Animación continua ────────────────────────────────────────
+  useEffect(() => {
     const heartLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(heartBreath, {
@@ -47,7 +165,6 @@ const HomeScreen = () => {
     );
     heartLoop.start();
 
-    // Button: continuous pulse 1 ↔ 1.08
     const buttonLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(buttonPulse, {
@@ -70,7 +187,7 @@ const HomeScreen = () => {
     };
   }, []);
 
-  // ── Heart pop when touches increase ─────────────────────────────
+  // ── Heart pop cuando suben los touches ─────────────────────────
   useEffect(() => {
     if (touchesToday === 0) return;
     Animated.sequence([
@@ -87,7 +204,7 @@ const HomeScreen = () => {
     ]).start();
   }, [touchesToday]);
 
-  // ── Button bounce on press ──────────────────────────────────────
+  // ── Botón principal ───────────────────────────────────────────
   const handleSendLove = () => {
     setTouchesToday(prev => prev + 1);
 
@@ -108,23 +225,40 @@ const HomeScreen = () => {
         useNativeDriver: true,
       }),
     ]).start();
+
+    sendTouch();
   };
 
   const heartIndex = Math.min(touchesToday, 4);
-
-  // Combine continuous + bounce scales
   const heartScale = Animated.multiply(heartBreath, heartBounce);
   const buttonScale = Animated.multiply(buttonPulse, buttonBounce);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Top HUD */}
+      {/* Toast retro */}
+      {toastMsg && (
+        <Animated.View
+          style={[
+            styles.retroToast,
+            {
+              opacity: toastOpacity,
+              borderColor: theme.border,
+              backgroundColor: theme.cardBackground,
+            },
+          ]}
+        >
+          <Text style={[styles.toastText, { color: theme.textPrimary }]}>
+            {toastMsg.icon}  {toastMsg.message}
+          </Text>
+        </Animated.View>
+      )}
+
+      {/* Contenido original */}
       <Text style={[styles.title, { color: theme.textPrimary }]}>TOUCH</Text>
       <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
         SI EXTRAÑAS A TU PAREJA
       </Text>
 
-      {/* Heart box */}
       <Animated.View
         style={[
           styles.heartBox,
@@ -138,7 +272,6 @@ const HomeScreen = () => {
         />
       </Animated.View>
 
-      {/* Send button */}
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={handleSendLove}
@@ -160,12 +293,21 @@ const HomeScreen = () => {
         </Animated.View>
       </TouchableOpacity>
 
-      {/* Status */}
       <View style={[styles.statusContainer, { borderColor: theme.border }]}>
         <Text style={[styles.statusText, { color: theme.textPrimary }]}>
           TOQUES DE AMOR: {touchesToday}
         </Text>
       </View>
+
+      {/* Botón de prueba temporal */}
+      <TouchableOpacity
+        style={[styles.testBuzzButton, { borderColor: theme.border }]}
+        onPress={() => Vibration.vibrate([0, 150, 100, 150])}
+      >
+        <Text style={[styles.testBuzzText, { color: theme.textSecondary }]}>
+          TEST BUZZ
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -178,6 +320,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
+  },
+  retroToast: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    right: 20,
+    borderWidth: 3,
+    padding: 12,
+    alignItems: 'center',
+    zIndex: 10,
+    borderRadius: 4,
+  },
+  toastText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 10,
+    textAlign: 'center',
   },
   title: {
     fontFamily: 'PressStart2P-Regular',
@@ -222,9 +380,21 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     paddingVertical: 8,
     paddingHorizontal: 20,
+    marginBottom: 15,
   },
   statusText: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 11,
+  },
+  testBuzzButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderWidth: 2,
+    borderRadius: 4,
+  },
+  testBuzzText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 10,
   },
 });
