@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,13 @@ import {
   Animated,
   StyleSheet,
   Vibration,
+  Platform,
+  Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { useTheme } from '../theme/ThemeContext';
 import { supabase } from '../lib/supabase';
 
@@ -30,6 +35,66 @@ const heartImages = [
   require('../../assets/heart_4.png'),
 ];
 
+// ─── Función de registro de notificaciones push ─────────────────
+const registerForPushNotificationsAsync = async () => {
+  if (!Device.isDevice) {
+    Alert.alert(
+      'Dispositivo no físico',
+      'Las notificaciones push solo funcionan en dispositivos reales.'
+    );
+    return null;
+  }
+
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      Alert.alert(
+        'Permiso denegado',
+        'No se concedió permiso para recibir notificaciones.'
+      );
+      return null;
+    }
+
+    // Configuración del canal para Android
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 150, 100, 150],
+        lightColor: '#FF69B4',
+      });
+    }
+
+    // ── Extracción segura del projectId (corregida) ─────────────
+    const projectId = 
+      Constants?.expoConfig?.extra?.eas?.projectId ?? 
+      Constants?.easConfig?.projectId;
+
+    if (!projectId) {
+      Alert.alert(
+        'Falta Project ID',
+        'No se encontró el ID del proyecto de Expo. Ejecuta "npx eas init" en tu terminal.'
+      );
+      return null;
+    }
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId,
+    });
+
+    return tokenData.data;
+  } catch (error) {
+    Alert.alert('Error Push Token', error.message);
+    console.error('registerForPushNotificationsAsync error:', error);
+    return null;
+  }
+};
+
 const HomeScreen = () => {
   const { theme } = useTheme();
   const [touchesToday, setTouchesToday] = useState(0);
@@ -46,7 +111,6 @@ const HomeScreen = () => {
   const toastTimeout = useRef(null);
 
   const showRetroToast = (message, icon = '💖') => {
-    // Limpiar timeout anterior
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
     setToastMsg({ message, icon });
     Animated.timing(toastOpacity, {
@@ -67,31 +131,35 @@ const HomeScreen = () => {
   const channelRef = useRef(null);
   const [coupleId, setCoupleId] = useState(null);
 
-  useEffect(() => {
-    const getCoupleId = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('couple_id')
-        .eq('id', user.id)
-        .single();
-      if (profile?.couple_id) setCoupleId(profile.couple_id);
-    };
-    getCoupleId();
-  }, []);
+  // Obtener couple_id fresco cada vez que la pantalla obtiene el foco
+  useFocusEffect(
+    useCallback(() => {
+      const getCoupleId = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('couple_id')
+          .eq('id', user.id)
+          .single();
+        if (profile?.couple_id) {
+          setCoupleId(profile.couple_id);
+        }
+      };
+      getCoupleId();
+    }, [])
+  );
 
+  // Suscribirse al canal cuando cambie coupleId
   useEffect(() => {
     if (!coupleId) return;
 
     const channel = supabase.channel(`couple_touches:${coupleId}`, {
-      config: { broadcast: { self: true } },
+      config: { broadcast: { self: false } },
     });
 
     channel.on('broadcast', { event: 'touch_received' }, async () => {
-      // Doble zumbido retro
       Vibration.vibrate([0, 150, 100, 150]);
-      // Notificación del sistema
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '¡Zumbido de Amor! ⚡️',
@@ -99,7 +167,6 @@ const HomeScreen = () => {
         },
         trigger: null,
       });
-      // Toast en pantalla
       showRetroToast('¡Tu pareja te envió un toque! ⚡️');
     });
 
@@ -111,21 +178,54 @@ const HomeScreen = () => {
     };
   }, [coupleId]);
 
+  // ── Registrar token push y guardarlo en Supabase ─────────────
+  useEffect(() => {
+    const setupPushToken = async () => {
+      const token = await registerForPushNotificationsAsync();
+      if (!token) return;
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          Alert.alert('Error', 'No se pudo obtener el usuario autenticado.');
+          return;
+        }
+
+        const { error } = await supabase
+          .from('profiles')
+          .update({ push_token: token })
+          .eq('id', user.id);
+
+        if (error) {
+          Alert.alert('Error Supabase', error.message);
+          console.error('Error al guardar push_token:', error);
+        } else {
+          Alert.alert(
+            'Éxito',
+            `Token guardado en BD: ${token.substring(0, 10)}...`
+          );
+        }
+      } catch (catchError) {
+        Alert.alert('Error inesperado', catchError.message || 'Error al guardar token');
+        console.error('setupPushToken error:', catchError);
+      }
+    };
+
+    setupPushToken();
+  }, []);
+
   // ── Envío de toque ────────────────────────────────────────────
   const sendTouch = async () => {
     if (!coupleId || !channelRef.current) return;
 
-    // Doble zumbido local (el emisor también lo siente)
     Vibration.vibrate([0, 150, 100, 150]);
 
-    // Enviar broadcast
     await channelRef.current.send({
       type: 'broadcast',
       event: 'touch_received',
       payload: {},
     });
 
-    // Incrementar contador en BD
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -235,7 +335,6 @@ const HomeScreen = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Toast retro */}
       {toastMsg && (
         <Animated.View
           style={[
@@ -253,7 +352,6 @@ const HomeScreen = () => {
         </Animated.View>
       )}
 
-      {/* Contenido original */}
       <Text style={[styles.title, { color: theme.textPrimary }]}>TOUCH</Text>
       <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
         SI EXTRAÑAS A TU PAREJA
@@ -299,7 +397,6 @@ const HomeScreen = () => {
         </Text>
       </View>
 
-      {/* Botón de prueba temporal */}
       <TouchableOpacity
         style={[styles.testBuzzButton, { borderColor: theme.border }]}
         onPress={() => Vibration.vibrate([0, 150, 100, 150])}

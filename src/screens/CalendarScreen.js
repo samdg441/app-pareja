@@ -1,96 +1,142 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   Modal,
-  Dimensions,
+  TextInput,
+  Alert,
   StyleSheet,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
-
-// ── Dimensiones de pantalla para calcular el ancho de celda ──────
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const GRID_PADDING = 20; // padding horizontal total (10 a cada lado)
-const CELL_GAP = 4;
-// 7 columnas → calculamos ancho exacto
-const CELL_SIZE = (SCREEN_WIDTH - GRID_PADDING - (CELL_GAP * 6)) / 7;
-
-// ── Hábitos de ejemplo ─────────────────────────────────────────
-const HABITS = [
-  {
-    name: 'Water',
-    scale: ['#E0F2FE', '#7DD3FC', '#38BDF8', '#0EA5E9', '#0369A1'],
-  },
-  {
-    name: 'Reading',
-    scale: ['#FCE7F3', '#F9A8D4', '#F472B6', '#EC4899', '#BE185D'],
-  },
-  {
-    name: 'Exercise',
-    scale: ['#D1FAE5', '#6EE7B7', '#34D399', '#10B981', '#047857'],
-  },
-];
+import { supabase } from '../lib/supabase';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const INTENSITY_LABELS = ['0', '1-3', '4-6', '7-9', '10+'];
-
-// ── Funciones de fecha ──────────────────────────────────────────
-const getDaysInMonth = (month, year) => new Date(year, month + 1, 0).getDate();
-const getFirstDayOfMonth = (month, year) => new Date(year, month, 1).getDay();
-
-// ── Generador de datos simulados ────────────────────────────────
-const generateDummyLog = (month, year) => {
-  const now = new Date();
-  const days = getDaysInMonth(month, year);
-  const log = {};
-  for (let d = 1; d <= days; d++) {
-    const date = new Date(year, month, d);
-    if (date > now) {
-      log[d] = null;
-    } else {
-      log[d] = Math.floor(Math.random() * 5);
-    }
-  }
-  return log;
-};
+const MONTH_NAMES = [
+  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+  'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+];
 
 const CalendarScreen = () => {
   const { theme } = useTheme();
-  const now = new Date();
 
-  const [currentHabitIndex, setCurrentHabitIndex] = useState(0);
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [logData, setLogData] = useState({});
-  const [modalVisible, setModalVisible] = useState(false);
+  // Estados generales
+  const [currentView, setCurrentView] = useState('my_habits');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [partnerProfile, setPartnerProfile] = useState(null);
+  const [coupleId, setCoupleId] = useState(null);
+
+  // Estados para hábitos
+  const [trackers, setTrackers] = useState([]);
+  const [selectedTrackerId, setSelectedTrackerId] = useState(null);
+  const [trackerLogs, setTrackerLogs] = useState({});
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [logModalVisible, setLogModalVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState(1);
   const [selectedIntensity, setSelectedIntensity] = useState(0);
 
-  const currentHabit = HABITS[currentHabitIndex];
-  const habitColors = currentHabit.scale;
-  const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
-  const firstDayIndex = getFirstDayOfMonth(selectedMonth, selectedYear);
+  // Estados para eventos
+  const [events, setEvents] = useState([]);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [eventModalVisible, setEventModalVisible] = useState(false);
+  const [newEventTitle, setNewEventTitle] = useState('');
 
-  const monthNames = [
-    'JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
-    'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'
-  ];
+  // Carga inicial de usuario y pareja
+  useFocusEffect(
+    useCallback(() => {
+      const loadUserAndPartner = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        setCurrentUser(user);
 
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.couple_id) {
+          setCoupleId(profile.couple_id);
+          const { data: partner } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('couple_id', profile.couple_id)
+            .neq('id', user.id)
+            .single();
+          setPartnerProfile(partner || null);
+        }
+      };
+      loadUserAndPartner();
+    }, [])
+  );
+
+  // Cargar trackers según vista
   useEffect(() => {
-    setLogData(generateDummyLog(selectedMonth, selectedYear));
-  }, [selectedMonth, selectedYear]);
+    if (!currentUser) return;
+    const loadTrackers = async () => {
+      let query = supabase.from('trackers').select('*');
+      if (currentView === 'my_habits') {
+        query = query.eq('user_id', currentUser.id);
+      } else if (currentView === 'partner_habits' && partnerProfile) {
+        query = query.eq('user_id', partnerProfile.id);
+      } else {
+        setTrackers([]);
+        return;
+      }
+      const { data } = await query;
+      setTrackers(data || []);
+      if (data && data.length > 0) {
+        setSelectedTrackerId(data[0].id);
+      } else {
+        setSelectedTrackerId(null);
+      }
+    };
+    loadTrackers();
+  }, [currentView, currentUser, partnerProfile]);
 
-  // ── Navegación de hábitos ──────────────────────────────────────
-  const goToPrevHabit = () => {
-    if (currentHabitIndex > 0) setCurrentHabitIndex(prev => prev - 1);
-  };
-  const goToNextHabit = () => {
-    if (currentHabitIndex < HABITS.length - 1) setCurrentHabitIndex(prev => prev + 1);
-  };
+  // Cargar logs del tracker seleccionado (sin timezone)
+  useEffect(() => {
+    if (!selectedTrackerId) return;
+    const loadLogs = async () => {
+      const startDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+      const endDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-31`;
+      const { data } = await supabase
+        .from('tracker_logs')
+        .select('*')
+        .eq('tracker_id', selectedTrackerId)
+        .gte('date', startDate)
+        .lte('date', endDate);
+      const logsMap = {};
+      data?.forEach(log => {
+        const day = parseInt(log.date.split('-')[2], 10);
+        logsMap[day] = log.intensity;
+      });
+      setTrackerLogs(logsMap);
+    };
+    loadLogs();
+  }, [selectedTrackerId, selectedMonth, selectedYear]);
 
-  // ── Navegación de meses (solo pasado) ──────────────────────────
+  // Cargar eventos cuando se selecciona 'events'
+  useEffect(() => {
+    if (currentView !== 'events' || !coupleId) return;
+    const loadEvents = async () => {
+      const { data } = await supabase
+        .from('events')
+        .select('*')
+        .eq('couple_id', coupleId)
+        .order('event_date', { ascending: true });
+      setEvents(data || []);
+    };
+    loadEvents();
+  }, [currentView, coupleId]);
+
+  // Funciones auxiliares para el calendario
+  const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+  const firstDayIndex = new Date(selectedYear, selectedMonth, 1).getDay();
+
   const goToPrevMonth = () => {
     if (selectedMonth === 0) {
       setSelectedMonth(11);
@@ -100,8 +146,6 @@ const CalendarScreen = () => {
     }
   };
   const goToNextMonth = () => {
-    if (selectedYear > now.getFullYear()) return;
-    if (selectedYear === now.getFullYear() && selectedMonth >= now.getMonth()) return;
     if (selectedMonth === 11) {
       setSelectedMonth(0);
       setSelectedYear(prev => prev + 1);
@@ -110,350 +154,586 @@ const CalendarScreen = () => {
     }
   };
 
-  // ── Modal ──────────────────────────────────────────────────────
-  const openModal = () => {
-    setSelectedDate(1);
-    setSelectedIntensity(0);
-    setModalVisible(true);
-  };
-  const saveLog = () => {
-    setLogData(prev => ({ ...prev, [selectedDate]: selectedIntensity }));
-    setModalVisible(false);
-  };
-
-  // ── Color de fondo y texto ────────────────────────────────────
-  const getCellColor = (day) => {
-    if (logData[day] === null || logData[day] === undefined) return theme.cardBackground;
-    return habitColors[logData[day]];
-  };
-
-  const getTextColor = (day) => {
-    const intensity = logData[day];
-    if (intensity === null || intensity === undefined) return theme.textSecondary;
-    // En las escalas, los índices 0-1 suelen ser claros → texto oscuro
-    // índices 2-4 son oscuros → texto blanco
-    return intensity >= 2 ? '#FFFFFF' : '#1F2937';
+  // Guardar registro de actividad
+  const handleSaveLog = async () => {
+    if (!selectedTrackerId || !currentUser) return;
+    const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
+    const { error } = await supabase.from('tracker_logs').upsert({
+      tracker_id: selectedTrackerId,
+      user_id: currentUser.id,
+      date: dateStr,
+      intensity: selectedIntensity,
+    });
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      setTrackerLogs(prev => ({ ...prev, [selectedDate]: selectedIntensity }));
+      setLogModalVisible(false);
+    }
   };
 
-  // ── Construir grilla con huecos ───────────────────────────────
-  const gridCells = [];
-  for (let i = 0; i < firstDayIndex; i++) {
-    gridCells.push({ type: 'blank', key: `blank-${i}` });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    gridCells.push({ type: 'day', day: d, key: `day-${d}` });
-  }
+  // Agregar evento
+  const handleAddEvent = async () => {
+    if (!newEventTitle.trim() || !selectedDay || !coupleId || !currentUser) return;
+    const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+    const { error } = await supabase.from('events').insert({
+      couple_id: coupleId,
+      title: newEventTitle.trim(),
+      event_date: dateStr,
+      created_by: currentUser.id,
+    });
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      setNewEventTitle('');
+      setEventModalVisible(false);
+      const { data } = await supabase
+        .from('events')
+        .select('*')
+        .eq('couple_id', coupleId)
+        .order('event_date', { ascending: true });
+      setEvents(data || []);
+    }
+  };
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* ── Doble navegación ──────────────────────────────────── */}
-      <View style={[styles.navContainer, { borderColor: theme.border }]}>
-        {/* Fila de hábito */}
-        <View style={styles.navRow}>
-          <TouchableOpacity onPress={goToPrevHabit} style={styles.arrowBtn}>
-            <Text style={[styles.arrowText, { color: theme.primary }]}>◀</Text>
-          </TouchableOpacity>
-          <Text style={[styles.habitTitle, { color: theme.textPrimary }]}>
-            {currentHabit.name}
-          </Text>
-          <TouchableOpacity onPress={goToNextHabit} style={styles.arrowBtn}>
-            <Text style={[styles.arrowText, { color: theme.primary }]}>▶</Text>
-          </TouchableOpacity>
-        </View>
+  // Eliminar evento
+  const handleDeleteEvent = async (eventId) => {
+    const { error } = await supabase.from('events').delete().eq('id', eventId);
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      setEvents(prev => prev.filter(e => e.id !== eventId));
+    }
+  };
 
-        {/* Fila de mes / año */}
-        <View style={styles.navRow}>
-          <TouchableOpacity onPress={goToPrevMonth} style={styles.arrowBtn}>
-            <Text style={[styles.arrowText, { color: theme.primary }]}>◀</Text>
-          </TouchableOpacity>
-          <Text style={[styles.monthTitle, { color: theme.textPrimary }]}>
-            {monthNames[selectedMonth]} {selectedYear}
-          </Text>
+  // ── Pestañas ─────────────────────────────────────────────────
+  const renderTabs = () => (
+    <View style={styles.tabRow}>
+      {['my_habits', 'partner_habits', 'events'].map(view => {
+        const isActive = currentView === view;
+        const labels = {
+          my_habits: 'MIS HÁBITOS',
+          partner_habits: 'MI PAREJA',
+          events: 'CITAS / DATES',
+        };
+        return (
           <TouchableOpacity
-            onPress={goToNextMonth}
-            style={styles.arrowBtn}
-            disabled={
-              selectedYear === now.getFullYear() &&
-              selectedMonth >= now.getMonth()
-            }
+            key={view}
+            style={[
+              styles.tab,
+              {
+                borderColor: theme.primary,
+                backgroundColor: isActive ? theme.primary : theme.cardBackground,
+              },
+            ]}
+            onPress={() => setCurrentView(view)}
           >
             <Text
               style={[
-                styles.arrowText,
-                {
-                  color:
-                    selectedYear === now.getFullYear() &&
-                    selectedMonth >= now.getMonth()
-                      ? theme.textSecondary
-                      : theme.primary,
-                },
+                styles.tabText,
+                { color: isActive ? theme.headerTint : theme.textPrimary },
               ]}
             >
-              ▶
+              {labels[view]}
             </Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        );
+      })}
+    </View>
+  );
 
-      {/* ── Cabeceras de días ──────────────────────────────────── */}
-      <View style={styles.weekdayRow}>
-        {WEEKDAYS.map((day, idx) => (
-          <View key={idx} style={styles.weekdayCell}>
-            <Text style={[styles.weekdayText, { color: theme.textSecondary }]}>
-              {day}
+  // ── Heatmap de hábitos ───────────────────────────────────────
+  const renderHeatmap = (readOnly = false) => {
+    if (!trackers || trackers.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: theme.textPrimary }]}>
+            No hay hábitos registrados.{'\n'}¡Crea uno nuevo!
+          </Text>
+        </View>
+      );
+    }
+
+    const gridCells = [];
+    for (let i = 0; i < firstDayIndex; i++) {
+      gridCells.push({ type: 'blank', key: `blank-${i}` });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      gridCells.push({ type: 'day', day: d, key: `day-${d}` });
+    }
+
+    const tracker = trackers.find(t => t.id === selectedTrackerId);
+    const colors = tracker?.color_theme
+      ? tracker.color_theme.split(',')
+      : ['#E0F2FE', '#7DD3FC', '#38BDF8', '#0EA5E9', '#0369A1'];
+
+    const intensityLabels = tracker?.intensity_labels || {};
+
+    const getCellColor = (day) => {
+      if (trackerLogs[day] === undefined) return theme.cardBackground;
+      return colors[trackerLogs[day]] || colors[0];
+    };
+
+    const getTextColor = (day) => {
+      const intensity = trackerLogs[day];
+      if (intensity === undefined) return theme.textSecondary;
+      return intensity >= 2 ? '#FFFFFF' : '#1F2937';
+    };
+
+    const today = new Date();
+    const isFutureDay = (day) => {
+      if (selectedYear > today.getFullYear()) return true;
+      if (selectedYear === today.getFullYear() && selectedMonth > today.getMonth()) return true;
+      if (selectedYear === today.getFullYear() && selectedMonth === today.getMonth() && day > today.getDate()) return true;
+      return false;
+    };
+
+    return (
+      <View>
+        {/* Selector de tracker */}
+        {trackers.length > 1 && (
+          <View style={styles.trackerSelector}>
+            <TouchableOpacity
+              onPress={() => {
+                const idx = trackers.findIndex(t => t.id === selectedTrackerId);
+                const prevIdx = idx > 0 ? idx - 1 : trackers.length - 1;
+                setSelectedTrackerId(trackers[prevIdx].id);
+              }}
+            >
+              <Text style={[styles.arrow, { color: theme.primary }]}>◀</Text>
+            </TouchableOpacity>
+            <Text
+              style={[styles.trackerName, { color: theme.textPrimary }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {tracker?.name || 'Seleccionar'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const idx = trackers.findIndex(t => t.id === selectedTrackerId);
+                const nextIdx = idx < trackers.length - 1 ? idx + 1 : 0;
+                setSelectedTrackerId(trackers[nextIdx].id);
+              }}
+            >
+              <Text style={[styles.arrow, { color: theme.primary }]}>▶</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {trackers.length === 1 && (
+          <View style={styles.trackerSelector}>
+            <Text
+              style={[styles.trackerName, { color: theme.textPrimary }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {tracker?.name || 'Seleccionar'}
             </Text>
           </View>
-        ))}
-      </View>
+        )}
 
-      {/* ── Grilla del calendario ──────────────────────────────── */}
-      <ScrollView contentContainerStyle={styles.gridScroll}>
-        <View style={styles.heatmapGrid}>
+        {/* Navegación de mes */}
+        <View style={styles.monthNav}>
+          <TouchableOpacity onPress={goToPrevMonth}>
+            <Text style={[styles.arrow, { color: theme.primary }]}>◀</Text>
+          </TouchableOpacity>
+          <Text style={[styles.monthText, { color: theme.textPrimary }]}>
+            {MONTH_NAMES[selectedMonth]} {selectedYear}
+          </Text>
+          <TouchableOpacity onPress={goToNextMonth}>
+            <Text style={[styles.arrow, { color: theme.primary }]}>▶</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.weekdayRow}>
+          {WEEKDAYS.map((d, i) => (
+            <View key={i} style={styles.weekdayCell}>
+              <Text style={[styles.weekdayText, { color: theme.textSecondary }]}>{d}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.grid}>
           {gridCells.map(cell => {
-            if (cell.type === 'blank') {
-              return (
-                <View
-                  key={cell.key}
-                  style={[
-                    styles.dayCell,
-                    styles.blankCell,
-                  ]}
-                />
-              );
-            }
+            if (cell.type === 'blank') return <View key={cell.key} style={styles.blankCell} />;
             const day = cell.day;
-            const bgColor = getCellColor(day);
-            const txtColor = getTextColor(day);
+            const future = isFutureDay(day);
+            const bgColor = future ? theme.background : getCellColor(day);
+            const txtColor = future ? theme.textSecondary : getTextColor(day);
+            const canPress = !readOnly && !future;
             return (
-              <View
+              <TouchableOpacity
                 key={cell.key}
-                style={[
-                  styles.dayCell,
-                  {
-                    backgroundColor: bgColor,
-                    borderColor: theme.primary,
-                  },
-                ]}
+                style={[styles.dayCell, { backgroundColor: bgColor, borderColor: theme.border }]}
+                disabled={!canPress}
+                onPress={() => {
+                  if (!readOnly && !future) {
+                    setSelectedDate(day);
+                    setSelectedIntensity(trackerLogs[day] || 0);
+                    setLogModalVisible(true);
+                  }
+                }}
               >
-                <Text
-                  style={[
-                    styles.dayNumber,
-                    { color: txtColor },
-                  ]}
-                >
-                  {day}
-                </Text>
-              </View>
+                <Text style={[styles.dayText, { color: txtColor }]}>{day}</Text>
+              </TouchableOpacity>
             );
           })}
         </View>
-      </ScrollView>
 
-      {/* ── Botón Registrar ────────────────────────────────────── */}
-      <TouchableOpacity
-        style={[styles.registerButton, { backgroundColor: theme.primary }]}
-        onPress={openModal}
-      >
-        <Text style={[styles.registerText, { color: theme.headerTint }]}>
-          REGISTER ACTIVITY
-        </Text>
-      </TouchableOpacity>
-
-      {/* ── Modal de registro ──────────────────────────────────── */}
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalBox,
-              { backgroundColor: theme.cardBackground, borderColor: theme.border },
-            ]}
+        {/* Botón de registrar */}
+        {!readOnly && (
+          <TouchableOpacity
+            style={[styles.registerButton, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              setSelectedDate(new Date().getDate());
+              setSelectedIntensity(0);
+              setLogModalVisible(true);
+            }}
           >
-            <Text style={[styles.modalTitle, { color: theme.primary }]}>
-              LOG ENTRY
+            <Text style={[styles.registerButtonText, { color: theme.headerTint }]}>
+              REGISTRAR ACTIVIDAD
             </Text>
+          </TouchableOpacity>
+        )}
 
-            {/* Selección de fecha */}
-            <Text style={[styles.sectionLabel, { color: theme.textPrimary }]}>
-              SELECT DATE
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.dateRow}>
-                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                  const isFuture =
-                    selectedYear > now.getFullYear() ||
-                    (selectedYear === now.getFullYear() && selectedMonth > now.getMonth()) ||
-                    (selectedYear === now.getFullYear() && selectedMonth === now.getMonth() && day > now.getDate());
-                  const isSelected = day === selectedDate;
+        {/* Modal de registro con solo 4 opciones (1‑4) y toggle para limpiar */}
+        <Modal visible={logModalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalBox, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.primary }]}>REGISTRAR</Text>
+              <Text style={[styles.modalDate, { color: theme.textPrimary }]}>
+                {selectedDate}/{selectedMonth + 1}/{selectedYear}
+              </Text>
+              <View style={styles.intensityRow}>
+                {[1, 2, 3, 4].map(lvl => {
+                  const label = intensityLabels[lvl] || `${lvl}`;
+                  const isSelected = selectedIntensity === lvl;
                   return (
                     <TouchableOpacity
-                      key={day}
-                      disabled={isFuture}
+                      key={lvl}
                       style={[
-                        styles.dateItem,
+                        styles.intensityBlock,
                         {
-                          borderColor: theme.border,
-                          backgroundColor: isSelected
-                            ? theme.primary
-                            : isFuture
-                            ? theme.background
-                            : theme.cardBackground,
+                          backgroundColor: colors[lvl],
+                          borderColor: isSelected ? theme.primary : theme.border,
                         },
                       ]}
-                      onPress={() => setSelectedDate(day)}
+                      onPress={() => setSelectedIntensity(isSelected ? 0 : lvl)}
                     >
-                      <Text
-                        style={{
-                          fontFamily: 'PressStart2P-Regular',
-                          fontSize: 10,
-                          color: isSelected
-                            ? theme.headerTint
-                            : isFuture
-                            ? theme.textSecondary
-                            : theme.textPrimary,
-                        }}
-                      >
-                        {day}
+                      <Text style={styles.intensityText} numberOfLines={1} adjustsFontSizeToFit>
+                        {label}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-            </ScrollView>
-
-            {/* Intensidad */}
-            <Text style={[styles.sectionLabel, { color: theme.textPrimary }]}>
-              INTENSITY
-            </Text>
-            <View style={styles.intensityRow}>
-              {habitColors.map((color, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.intensityBlock,
-                    {
-                      backgroundColor: color,
-                      borderColor: selectedIntensity === index ? theme.primary : theme.border,
-                    },
-                  ]}
-                  onPress={() => setSelectedIntensity(index)}
-                >
-                  <Text style={styles.intensityLabel}>
-                    {INTENSITY_LABELS[index]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                onPress={handleSaveLog}
+              >
+                <Text style={[styles.saveButtonText, { color: theme.headerTint }]}>GUARDAR</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setLogModalVisible(false)}>
+                <Text style={[styles.cancelText, { color: theme.textSecondary }]}>CANCELAR</Text>
+              </TouchableOpacity>
             </View>
+          </View>
+        </Modal>
+      </View>
+    );
+  };
 
+  // ── Eventos ──────────────────────────────────────────────────
+  const renderEvents = () => {
+    const eventsByDay = {};
+    events.forEach(ev => {
+      const day = new Date(ev.event_date).getDate();
+      if (!eventsByDay[day]) eventsByDay[day] = [];
+      eventsByDay[day].push(ev);
+    });
+
+    const gridCells = [];
+    for (let i = 0; i < firstDayIndex; i++) {
+      gridCells.push({ type: 'blank', key: `b-${i}` });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      gridCells.push({ type: 'day', day: d, key: `d-${d}` });
+    }
+
+    return (
+      <View>
+        <View style={styles.monthNav}>
+          <TouchableOpacity onPress={goToPrevMonth}>
+            <Text style={[styles.arrow, { color: theme.primary }]}>◀</Text>
+          </TouchableOpacity>
+          <Text style={[styles.monthText, { color: theme.textPrimary }]}>
+            {MONTH_NAMES[selectedMonth]} {selectedYear}
+          </Text>
+          <TouchableOpacity onPress={goToNextMonth}>
+            <Text style={[styles.arrow, { color: theme.primary }]}>▶</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.weekdayRow}>
+          {WEEKDAYS.map((d, i) => (
+            <View key={i} style={styles.weekdayCell}>
+              <Text style={[styles.weekdayText, { color: theme.textSecondary }]}>{d}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.grid}>
+          {gridCells.map(cell => {
+            if (cell.type === 'blank') return <View key={cell.key} style={styles.blankCell} />;
+            const day = cell.day;
+            const hasEvents = eventsByDay[day]?.length > 0;
+            const isSelected = selectedDay === day;
+            return (
+              <TouchableOpacity
+                key={cell.key}
+                style={[
+                  styles.dayCell,
+                  {
+                    backgroundColor: isSelected ? theme.primary : theme.cardBackground,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => setSelectedDay(day)}
+              >
+                <Text style={[styles.dayText, { color: isSelected ? theme.headerTint : theme.textPrimary }]}>
+                  {day}
+                </Text>
+                {hasEvents && (
+                  <View style={[styles.eventDot, { backgroundColor: theme.primary }]} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {selectedDay && (
+          <View style={[styles.eventList, { borderColor: theme.border }]}>
+            <Text style={[styles.eventListTitle, { color: theme.primary }]}>
+              EVENTOS {selectedDay}/{selectedMonth + 1}
+            </Text>
+            {eventsByDay[selectedDay]?.map(ev => (
+              <View key={ev.id} style={styles.eventItem}>
+                <Text style={[styles.eventText, { color: theme.textPrimary }]}>{ev.title}</Text>
+                <TouchableOpacity onPress={() => handleDeleteEvent(ev.id)}>
+                  <Text style={[styles.deleteEvent, { color: 'red' }]}>X</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
             <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: theme.primary }]}
-              onPress={saveLog}
+              style={[styles.addEventButton, { backgroundColor: theme.primary }]}
+              onPress={() => setEventModalVisible(true)}
             >
-              <Text style={[styles.saveButtonText, { color: theme.headerTint }]}>
-                SAVE LOG
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setModalVisible(false)}
-            >
-              <Text style={{ color: theme.textSecondary, fontFamily: 'PressStart2P-Regular' }}>
-                CANCEL
+              <Text style={[styles.addEventText, { color: theme.headerTint }]}>
+                + AGREGAR EVENTO
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        )}
+
+        <Modal visible={eventModalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalBox, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.primary }]}>NUEVO EVENTO</Text>
+              <TextInput
+                style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
+                placeholder="Título del evento"
+                placeholderTextColor={theme.textSecondary}
+                value={newEventTitle}
+                onChangeText={setNewEventTitle}
+                fontFamily="PressStart2P-Regular"
+              />
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                onPress={handleAddEvent}
+              >
+                <Text style={[styles.saveButtonText, { color: theme.headerTint }]}>GUARDAR</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setEventModalVisible(false)}>
+                <Text style={[styles.cancelText, { color: theme.textSecondary }]}>CANCELAR</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </View>
+    );
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {renderTabs()}
+      <ScrollView contentContainerStyle={styles.content}>
+        {currentView === 'my_habits' && renderHeatmap(false)}
+        {currentView === 'partner_habits' && renderHeatmap(true)}
+        {currentView === 'events' && renderEvents()}
+      </ScrollView>
     </View>
   );
 };
 
 export default CalendarScreen;
 
-// ─── Estilos ───────────────────────────────────────────────────
+// ─── Estilos ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  content: { padding: 10 },
+  emptyContainer: {
     flex: 1,
-  },
-  navContainer: {
-    borderBottomWidth: 3,
-    paddingBottom: 8,
-    marginBottom: 6,
-  },
-  navRow: {
-    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    borderBottomWidth: 3,
+    borderColor: '#000',
+  },
+  tab: {
+    flex: 1,
+    marginHorizontal: 4,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 3,
+    borderRadius: 4,
+  },
+  tabText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 8,
+  },
+  trackerSelector: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  trackerName: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 11,
+    marginHorizontal: 10,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  arrow: {
+    fontSize: 20,
+    fontFamily: 'PressStart2P-Regular',
+  },
+  monthNav: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 15,
-    marginTop: 6,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginVertical: 10,
   },
-  arrowBtn: {
-    padding: 6,
-  },
-  arrowText: {
-    fontSize: 22,
+  monthText: {
     fontFamily: 'PressStart2P-Regular',
-  },
-  habitTitle: {
-    fontFamily: 'PressStart2P-Regular',
-    fontSize: 15,
-  },
-  monthTitle: {
-    fontFamily: 'PressStart2P-Regular',
-    fontSize: 13,
+    fontSize: 14,
   },
   weekdayRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    marginBottom: 4,
+    justifyContent: 'space-around',
+    marginBottom: 5,
   },
   weekdayCell: {
-    width: CELL_SIZE,
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
   },
   weekdayText: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 10,
   },
-  gridScroll: {
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-  },
-  heatmapGrid: {
+  grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-start',
   },
+  blankCell: {
+    width: '13.2%',
+    aspectRatio: 1,
+    margin: 1,
+  },
   dayCell: {
-    width: CELL_SIZE,
-    height: CELL_SIZE,          // Cuadrado perfecto
+    width: '13.2%',
+    aspectRatio: 1,
     borderWidth: 2,
-    margin: CELL_GAP / 2,      // Espacio uniforme
+    margin: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  blankCell: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  dayNumber: {
+  dayText: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 10,
   },
+  eventDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    position: 'absolute',
+    bottom: 3,
+  },
+  eventList: {
+    marginTop: 15,
+    borderWidth: 3,
+    padding: 10,
+  },
+  eventListTitle: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  eventItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderColor: '#ccc',
+  },
+  eventText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 10,
+    flex: 1,
+  },
+  deleteEvent: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 14,
+    paddingHorizontal: 8,
+  },
+  addEventButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    borderWidth: 3,
+    borderColor: '#000',
+    alignItems: 'center',
+  },
+  addEventText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 11,
+  },
   registerButton: {
-    marginHorizontal: 20,
-    marginBottom: 30,
-    paddingVertical: 16,
+    marginVertical: 20,
+    paddingVertical: 15,
     borderWidth: 4,
     borderColor: '#000',
     alignItems: 'center',
   },
-  registerText: {
+  registerButtonText: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 14,
+    fontSize: 13,
   },
-  // Modal styles
+  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -461,56 +741,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalBox: {
-    width: '90%',
+    width: '85%',
     borderWidth: 4,
     borderRadius: 8,
     padding: 20,
-    maxHeight: '80%',
+    alignItems: 'center',
   },
   modalTitle: {
     fontFamily: 'PressStart2P-Regular',
     fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 15,
   },
-  sectionLabel: {
+  modalDate: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 11,
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  dateItem: {
-    width: 30,
-    height: 30,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 6,
-    borderRadius: 2,
+    fontSize: 12,
+    marginBottom: 15,
   },
   intensityRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between',  // o 'space-around' si prefieres
+    width: '100%',
     marginBottom: 20,
   },
   intensityBlock: {
-    flex: 1,
-    paddingVertical: 14,
-    marginHorizontal: 3,
+    flex: 1,                         // ocupa el espacio disponible
+    aspectRatio: 1,                  // mantiene cuadrado
+    marginHorizontal: 4,             // espacio entre bloques
     borderWidth: 2,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 4,
   },
-  intensityLabel: {
+  intensityText: {
     fontFamily: 'PressStart2P-Regular',
-    fontSize: 10,
+    fontSize: 9,
     color: '#000',
+    textAlign: 'center',
   },
   saveButton: {
+    width: '100%',
     paddingVertical: 12,
     borderWidth: 3,
     borderColor: '#000',
@@ -521,8 +789,17 @@ const styles = StyleSheet.create({
     fontFamily: 'PressStart2P-Regular',
     fontSize: 13,
   },
-  closeButton: {
-    alignItems: 'center',
-    padding: 8,
+  cancelText: {
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 11,
+    marginTop: 5,
+  },
+  input: {
+    width: '100%',
+    borderWidth: 3,
+    padding: 10,
+    marginBottom: 15,
+    fontFamily: 'PressStart2P-Regular',
+    fontSize: 11,
   },
 });

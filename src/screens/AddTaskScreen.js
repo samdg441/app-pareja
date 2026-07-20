@@ -6,11 +6,13 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { supabase } from '../lib/supabase';
 
-// ── 8 color scales (each 5 intensities) ─────────────────────────
+// 8 color scales (each 5 intensities)
 const COLOR_SCALES = {
   Red: ['#FEE2E2', '#FCA5A5', '#F87171', '#EF4444', '#B91C1C'],
   Blue: ['#E0F2FE', '#7DD3FC', '#38BDF8', '#0EA5E9', '#0369A1'],
@@ -35,18 +37,63 @@ const AddTaskScreen = () => {
     3: '7-9',
     4: '10+',
   });
+  const [saving, setSaving] = useState(false);
 
   const currentScale = COLOR_SCALES[selectedScale];
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!trackerName.trim()) {
       Alert.alert('Missing name', 'Please enter a tracker name.');
       return;
     }
-    Alert.alert('Tracker Saved!', `"${trackerName}" created with ${selectedScale} scale.`);
-    setTrackerName('');
-    setSelectedScale('Blue');
-    setLevels({ 1: '1-3', 2: '4-6', 3: '7-9', 4: '10+' });
+
+    setSaving(true);
+    try {
+      // 1. Obtener usuario autenticado
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        Alert.alert('Error', 'Debes iniciar sesión para crear un tracker.');
+        return;
+      }
+
+      // 2. Obtener couple_id del perfil (necesario para la tabla)
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('couple_id')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !profile?.couple_id) {
+        Alert.alert('Error', 'No se pudo obtener tu pareja vinculada. Asegúrate de haber vinculado a tu pareja.');
+        return;
+      }
+
+      // 3. Insertar en la tabla trackers
+      const { error: insertError } = await supabase.from('trackers').insert({
+        name: trackerName.trim(),
+        color_theme: currentScale.join(','),          // hex codes, e.g., "#E0F2FE,#7DD3FC,..."
+        intensity_labels: levels,                      // objeto JSON
+        user_id: user.id,
+        couple_id: profile.couple_id,
+        icon_name: '',                                  // opcional, evita errores si es NOT NULL
+      });
+
+      if (insertError) {
+        console.error('Error inserting tracker:', insertError);
+        Alert.alert('Error', insertError.message);
+        return;
+      }
+
+      Alert.alert('¡Tracker Guardado!', `"${trackerName}" creado con la escala ${selectedScale}.`);
+      setTrackerName('');
+      setSelectedScale('Blue');
+      setLevels({ 1: '1-3', 2: '4-6', 3: '7-9', 4: '10+' });
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo guardar el tracker.');
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -142,10 +189,15 @@ const AddTaskScreen = () => {
       <TouchableOpacity
         style={[styles.saveButton, { backgroundColor: theme.primary }]}
         onPress={handleSave}
+        disabled={saving}
       >
-        <Text style={[styles.saveButtonText, { color: theme.headerTint }]}>
-          SAVE TRACKER
-        </Text>
+        {saving ? (
+          <ActivityIndicator color={theme.headerTint} />
+        ) : (
+          <Text style={[styles.saveButtonText, { color: theme.headerTint }]}>
+            SAVE TRACKER
+          </Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -153,6 +205,7 @@ const AddTaskScreen = () => {
 
 export default AddTaskScreen;
 
+// ─── Styles (unchanged) ────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
