@@ -229,6 +229,7 @@ const HomeScreen = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Actualizar contador de toques del emisor
         const { data: profile } = await supabase
           .from('profiles')
           .select('touches')
@@ -239,9 +240,35 @@ const HomeScreen = () => {
           .from('profiles')
           .update({ touches: newTouches })
           .eq('id', user.id);
+
+        // Obtener el token push de la pareja
+        const { data: partnerProfile } = await supabase
+          .from('profiles')
+          .select('id, push_token')
+          .eq('couple_id', coupleId)
+          .neq('id', user.id)
+          .maybeSingle();
+
+        if (partnerProfile?.push_token) {
+          // Enviar notificación push a la pareja via Expo
+          await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: partnerProfile.push_token,
+              title: '¡Zumbido de Amor! ⚡️',
+              body: 'Tu pareja te ha enviado un toque 💖',
+              sound: 'default',
+              priority: 'high',
+            }),
+          });
+        }
       }
     } catch (error) {
-      console.warn('No se pudo actualizar el contador de toques:', error);
+      console.warn('sendTouch error:', error);
     }
 
     showRetroToast('¡Toque enviado! 💖');
