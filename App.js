@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -7,6 +7,7 @@ import { useFonts } from 'expo-font';
 import { Image } from 'react-native';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { setupNotifications, scheduleDailyHabitReminder } from './src/lib/notifications';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -14,8 +15,7 @@ import CalendarScreen from './src/screens/CalendarScreen';
 import AddTaskScreen from './src/screens/AddTaskScreen';
 import PetScreen from './src/screens/PetScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import LoginScreen from './src/screens/LoginScreen';   // original login (now replaced by AuthScreen)
-import AuthScreen from './src/screens/AuthScreen';     // new authentication screen
+import AuthScreen from './src/screens/AuthScreen';     // pantalla de autenticación
 
 // Custom tab icons (your pixel art images)
 const TAB_ICONS = {
@@ -93,6 +93,15 @@ export default function App() {
   const [fontsLoaded] = useFonts({
     'PressStart2P-Regular': require('./assets/fonts/PressStart2P-Regular.ttf'),
   });
+
+  useEffect(() => {
+    (async () => {
+      const granted = await setupNotifications();
+      if (granted) {
+        await scheduleDailyHabitReminder(20, 0);
+      }
+    })();
+  }, []);
 
   if (!fontsLoaded) {
     return (

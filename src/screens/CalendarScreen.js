@@ -12,6 +12,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { syncEventReminders, parseLocalDate } from '../lib/notifications';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_NAMES = [
@@ -101,8 +102,9 @@ const CalendarScreen = () => {
   useEffect(() => {
     if (!selectedTrackerId) return;
     const loadLogs = async () => {
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
       const startDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
-      const endDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-31`;
+      const endDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       const { data } = await supabase
         .from('tracker_logs')
         .select('*')
@@ -119,19 +121,22 @@ const CalendarScreen = () => {
     loadLogs();
   }, [selectedTrackerId, selectedMonth, selectedYear]);
 
-  // Cargar eventos cuando se selecciona 'events'
+  // Cargar eventos en cuanto tengamos couple_id (sin depender de la pestaña),
+  // así podemos programar los recordatorios aunque el usuario no abra "CITAS".
   useEffect(() => {
-    if (currentView !== 'events' || !coupleId) return;
+    if (!coupleId) return;
     const loadEvents = async () => {
       const { data } = await supabase
         .from('events')
         .select('*')
         .eq('couple_id', coupleId)
         .order('event_date', { ascending: true });
-      setEvents(data || []);
+      const list = data || [];
+      setEvents(list);
+      syncEventReminders(list);
     };
     loadEvents();
-  }, [currentView, coupleId]);
+  }, [coupleId]);
 
   // Funciones auxiliares para el calendario
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
@@ -192,7 +197,9 @@ const CalendarScreen = () => {
         .select('*')
         .eq('couple_id', coupleId)
         .order('event_date', { ascending: true });
-      setEvents(data || []);
+      const list = data || [];
+      setEvents(list);
+      syncEventReminders(list);
     }
   };
 
@@ -202,7 +209,11 @@ const CalendarScreen = () => {
     if (error) {
       Alert.alert('Error', error.message);
     } else {
-      setEvents(prev => prev.filter(e => e.id !== eventId));
+      setEvents(prev => {
+        const list = prev.filter(e => e.id !== eventId);
+        syncEventReminders(list);
+        return list;
+      });
     }
   };
 
@@ -448,7 +459,10 @@ const CalendarScreen = () => {
   const renderEvents = () => {
     const eventsByDay = {};
     events.forEach(ev => {
-      const day = new Date(ev.event_date).getDate();
+      const evDate = parseLocalDate(ev.event_date);
+      // Sólo agrupamos eventos del mes/año que se está visualizando.
+      if (evDate.getMonth() !== selectedMonth || evDate.getFullYear() !== selectedYear) return;
+      const day = evDate.getDate();
       if (!eventsByDay[day]) eventsByDay[day] = [];
       eventsByDay[day].push(ev);
     });

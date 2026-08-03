@@ -22,6 +22,26 @@ const gearIcon = require('../../assets/ggear.png');
 
 const AVATAR_PRESETS = ['👤', '🐶', '🐱', '🐸', '🐼'];
 
+// Formatea una fecha local como 'YYYY-MM-DD'
+const fmtLocalDate = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Calcula la racha de días consecutivos con actividad registrada (hasta hoy o ayer)
+const computeStreak = (loggedDates) => {
+  const set = new Set(loggedDates);
+  const cursor = new Date();
+  // Si aún no se registró hoy, la racha puede seguir viva si se registró ayer
+  if (!set.has(fmtLocalDate(cursor))) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  let streak = 0;
+  while (set.has(fmtLocalDate(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+};
+
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const { theme, activeThemeKey, setActiveThemeKey, themes } = useTheme();
@@ -30,6 +50,10 @@ const ProfileScreen = () => {
   const [profile, setProfile] = useState(null);
   const [partnerName, setPartnerName] = useState('...');
   const [loadingProfile, setLoadingProfile] = useState(true);
+
+  // ── Estadísticas reales ────────────────────────────────────────
+  const [touches, setTouches] = useState(0);
+  const [streak, setStreak] = useState(0);
 
   // ── Modal ──────────────────────────────────────────────────────
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
@@ -86,6 +110,17 @@ const ProfileScreen = () => {
 
       if (error) throw error;
       setProfile(userProfile);
+      setTouches(userProfile.touches || 0);
+
+      // Racha real: días consecutivos con al menos un registro de hábito
+      const { data: logs } = await supabase
+        .from('tracker_logs')
+        .select('date, intensity')
+        .eq('user_id', user.id);
+      const loggedDates = (logs || [])
+        .filter((l) => (l.intensity || 0) > 0)
+        .map((l) => l.date);
+      setStreak(computeStreak(loggedDates));
 
       const matchingTheme = Object.keys(themes).find(
         key => themes[key].primary === userProfile.base_color
@@ -261,18 +296,20 @@ const ProfileScreen = () => {
             <Text style={[styles.playerName, { color: theme.primary }]}>
               {profile?.username || 'PLAYER_ONE'}
             </Text>
-            <Text style={[styles.level, { color: theme.textSecondary }]}>LV. 42</Text>
+            <Text style={[styles.level, { color: theme.textSecondary }]}>
+              LV. {Math.floor(touches / 10) + 1}
+            </Text>
           </View>
         </View>
 
         {/* Stats */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-            <Text style={[styles.statValue, { color: theme.primary }]}>127</Text>
+            <Text style={[styles.statValue, { color: theme.primary }]}>{touches}</Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Touches</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-            <Text style={[styles.statValue, { color: theme.primary }]}>42</Text>
+            <Text style={[styles.statValue, { color: theme.primary }]}>{streak}</Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Streak</Text>
           </View>
         </View>

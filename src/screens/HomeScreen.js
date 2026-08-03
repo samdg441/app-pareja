@@ -17,14 +17,8 @@ import Constants from 'expo-constants';
 import { useTheme } from '../theme/ThemeContext';
 import { supabase } from '../lib/supabase';
 
-// Configurar notificaciones en primer plano
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+// El handler global de notificaciones y el canal de Android se configuran
+// de forma centralizada en src/lib/notifications.js (llamado desde App.js).
 
 // Corazones (0 a 4 toques)
 const heartImages = [
@@ -97,7 +91,7 @@ const registerForPushNotificationsAsync = async () => {
 
 const HomeScreen = () => {
   const { theme } = useTheme();
-  const [touchesToday, setTouchesToday] = useState(0);
+  const [touchesCount, setTouchesCount] = useState(0);
 
   // ── Animaciones existentes ─────────────────────────────────────
   const heartBreath = useRef(new Animated.Value(1)).current;
@@ -139,12 +133,13 @@ const HomeScreen = () => {
         if (!user) return;
         const { data: profile } = await supabase
           .from('profiles')
-          .select('couple_id')
+          .select('couple_id, touches')
           .eq('id', user.id)
           .single();
         if (profile?.couple_id) {
           setCoupleId(profile.couple_id);
         }
+        setTouchesCount(profile?.touches || 0);
       };
       getCoupleId();
     }, [])
@@ -240,6 +235,7 @@ const HomeScreen = () => {
           .from('profiles')
           .update({ touches: newTouches })
           .eq('id', user.id);
+        setTouchesCount(newTouches);
 
         // Obtener el token push de la pareja
         const { data: partnerProfile } = await supabase
@@ -316,7 +312,7 @@ const HomeScreen = () => {
 
   // ── Heart pop cuando suben los touches ─────────────────────────
   useEffect(() => {
-    if (touchesToday === 0) return;
+    if (touchesCount === 0) return;
     Animated.sequence([
       Animated.timing(heartBounce, {
         toValue: 1.2,
@@ -329,11 +325,11 @@ const HomeScreen = () => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [touchesToday]);
+  }, [touchesCount]);
 
   // ── Botón principal ───────────────────────────────────────────
   const handleSendLove = () => {
-    setTouchesToday(prev => prev + 1);
+    setTouchesCount(prev => prev + 1);
 
     Animated.sequence([
       Animated.timing(buttonBounce, {
@@ -356,7 +352,7 @@ const HomeScreen = () => {
     sendTouch();
   };
 
-  const heartIndex = Math.min(touchesToday, 4);
+  const heartIndex = Math.min(touchesCount, 4);
   const heartScale = Animated.multiply(heartBreath, heartBounce);
   const buttonScale = Animated.multiply(buttonPulse, buttonBounce);
 
@@ -420,7 +416,7 @@ const HomeScreen = () => {
 
       <View style={[styles.statusContainer, { borderColor: theme.border }]}>
         <Text style={[styles.statusText, { color: theme.textPrimary }]}>
-          TOQUES DE AMOR: {touchesToday}
+          TOQUES DE AMOR: {touchesCount}
         </Text>
       </View>
 

@@ -40,4 +40,7 @@ yarn-error.*
 /ios
 /android
 
+# Firebase / credenciales sensibles (NO subir a git)
+google-services.json
+*-firebase-adminsdk-*.json
 .env
