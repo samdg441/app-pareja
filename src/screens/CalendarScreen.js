@@ -163,6 +163,29 @@ const CalendarScreen = () => {
   const handleSaveLog = async () => {
     if (!selectedTrackerId || !currentUser) return;
     const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
+
+    // Intensidad 0 = "limpiar": borramos el registro de ese día en vez de
+    // insertar 0 (que además viola el CHECK constraint tracker_logs_intensity_check).
+    if (selectedIntensity === 0) {
+      const { error } = await supabase
+        .from('tracker_logs')
+        .delete()
+        .eq('tracker_id', selectedTrackerId)
+        .eq('user_id', currentUser.id)
+        .eq('date', dateStr);
+      if (error) {
+        Alert.alert('Error', error.message);
+        return;
+      }
+      setTrackerLogs(prev => {
+        const copy = { ...prev };
+        delete copy[selectedDate];
+        return copy;
+      });
+      setLogModalVisible(false);
+      return;
+    }
+
     const { error } = await supabase.from('tracker_logs').upsert({
       tracker_id: selectedTrackerId,
       user_id: currentUser.id,
