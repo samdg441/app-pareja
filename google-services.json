@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "184695540003",
+    "project_id": "app-pareja-89808",
+    "storage_bucket": "app-pareja-89808.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:184695540003:android:b3f1da4175ce18b3a6e496",
+        "android_client_info": {
+          "package_name": "com.samdg441.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdV78YBVCW1HTUDy8db9Ngn5K_YFwsf3A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

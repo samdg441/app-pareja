@@ -40,7 +40,7 @@ yarn-error.*
 /ios
 /android
 
-# Firebase / credenciales sensibles (NO subir a git)
-google-services.json
+# Firebase: la clave de cuenta de servicio SÍ es secreta (NO subir).
+# google-services.json NO es secreto y debe ir en git para que EAS Build lo use.
 *-firebase-adminsdk-*.json
 .env
